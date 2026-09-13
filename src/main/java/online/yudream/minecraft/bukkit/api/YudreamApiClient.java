@@ -1,0 +1,105 @@
+package online.yudream.minecraft.bukkit.api;
+
+import online.yudream.minecraft.bukkit.config.YudreamConfig;
+import online.yudream.minecraft.bukkit.report.PlayerEventPayload;
+import online.yudream.minecraft.bukkit.report.PlayerEventType;
+import online.yudream.minecraft.bukkit.util.JsonObjects;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Collection;
+
+public final class YudreamApiClient {
+
+    private static final String PLUGIN_PATH = "/api/plugins/minecraft-server/servers/";
+
+    private final YudreamConfig config;
+
+    public YudreamApiClient(YudreamConfig config) {
+        this.config = config;
+    }
+
+    public HttpResult report(PlayerEventType type, PlayerEventPayload payload) throws IOException {
+        String path = "/players/" + type.getRemotePath();
+        return request("POST", serverUrl(path), JsonObjects.playerEvent(payload));
+    }
+
+    public HttpResult snapshot(Collection<PlayerEventPayload> players, long observedAt) throws IOException {
+        return request("POST", serverUrl("/players/snapshot"), JsonObjects.playerSnapshot(players, observedAt));
+    }
+
+    public HttpResult players(int page, int size) throws IOException {
+        String path = "/players?page=" + Math.max(page, 1) + "&size=" + Math.max(Math.min(size, 100), 1);
+        return request("GET", serverUrl(path), null);
+    }
+
+    String serverUrl(String serverRelativePath) {
+        return config.getBaseUrl()
+                + PLUGIN_PATH
+                + encodePathSegment(config.getServerId())
+                + serverRelativePath;
+    }
+
+    private HttpResult request(String method, String url, String body) throws IOException {
+        HttpURLConnection connection = (HttpURLConnection) URI.create(url).toURL().openConnection();
+        connection.setRequestMethod(method);
+        connection.setConnectTimeout(config.getConnectTimeoutMs());
+        connection.setReadTimeout(config.getReadTimeoutMs());
+        connection.setRequestProperty("Accept", "application/json");
+        connection.setRequestProperty("User-Agent", "YudreamMinecraftServerBukkit/1.0");
+        connection.setRequestProperty("X-API-Key", config.getApiKey());
+
+        if (body != null) {
+            byte[] data = body.getBytes(StandardCharsets.UTF_8);
+            connection.setDoOutput(true);
+            connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+            connection.setFixedLengthStreamingMode(data.length);
+            OutputStream out = connection.getOutputStream();
+            try {
+                out.write(data);
+            } finally {
+                out.close();
+            }
+        }
+
+        int status = connection.getResponseCode();
+        String responseBody = readBody(status >= 400 ? connection.getErrorStream() : connection.getInputStream());
+        connection.disconnect();
+        return new HttpResult(status, responseBody);
+    }
+
+    private static String readBody(InputStream stream) throws IOException {
+        if (stream == null) {
+            return "";
+        }
+        BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
+        StringBuilder body = new StringBuilder();
+        try {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (body.length() > 0) {
+                    body.append('\n');
+                }
+                body.append(line);
+            }
+            return body.toString();
+        } finally {
+            reader.close();
+        }
+    }
+
+    static String encodePathSegment(String value) {
+        try {
+            return URLEncoder.encode(value, "UTF-8").replace("+", "%20");
+        } catch (IOException e) {
+            throw new IllegalStateException("UTF-8 is unavailable", e);
+        }
+    }
+}

@@ -1,0 +1,49 @@
+pluginManagement {
+    def resolveRepoUrl = { String propertyName, String envName, String fallback ->
+        def value = gradle.startParameter.projectProperties[propertyName]
+        if (value == null || value.trim().isEmpty()) {
+            value = System.getProperty(propertyName)
+        }
+        if (value == null || value.trim().isEmpty()) {
+            value = System.getenv(envName)
+        }
+        return uri((value == null || value.trim().isEmpty()) ? fallback : value)
+    }
+
+    repositories {
+        maven { url = resolveRepoUrl.call('gradlePluginMirrorUrl', 'GRADLE_PLUGIN_MIRROR_URL', 'https://maven.aliyun.com/repository/gradle-plugin') }
+        maven { url = resolveRepoUrl.call('mavenPublicMirrorUrl', 'MAVEN_PUBLIC_MIRROR_URL', 'https://maven.aliyun.com/repository/public') }
+        maven { url = resolveRepoUrl.call('forgeMavenUrl', 'FORGE_MAVEN_URL', 'https://maven.minecraftforge.net') }
+        maven { url = resolveRepoUrl.call('neoforgeMavenUrl', 'NEOFORGE_MAVEN_URL', 'https://maven.neoforged.net/releases') }
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    def resolveRepoUrl = { String propertyName, String envName, String fallback ->
+        def value = gradle.startParameter.projectProperties[propertyName]
+        if (value == null || value.trim().isEmpty()) {
+            value = System.getProperty(propertyName)
+        }
+        if (value == null || value.trim().isEmpty()) {
+            value = System.getenv(envName)
+        }
+        return uri((value == null || value.trim().isEmpty()) ? fallback : value)
+    }
+
+    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
+    repositories {
+        mavenLocal()
+        maven { url = resolveRepoUrl.call('mavenPublicMirrorUrl', 'MAVEN_PUBLIC_MIRROR_URL', 'https://maven.aliyun.com/repository/public') }
+        maven { url = resolveRepoUrl.call('mavenCentralMirrorUrl', 'MAVEN_CENTRAL_MIRROR_URL', 'https://maven.aliyun.com/repository/central') }
+        maven { url = resolveRepoUrl.call('forgeMavenUrl', 'FORGE_MAVEN_URL', 'https://maven.minecraftforge.net') }
+        maven { url = resolveRepoUrl.call('neoforgeMavenUrl', 'NEOFORGE_MAVEN_URL', 'https://maven.neoforged.net/releases') }
+        maven { url = resolveRepoUrl.call('neoforgeMojangMetaUrl', 'NEOFORGE_MOJANG_META_URL', 'https://maven.neoforged.net/mojang-meta') }
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'yudream-minecraft-server-mods'
+include 'common'
+include 'forge-1.20.1'
+include 'neoforge-1.21.1'

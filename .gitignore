@@ -1,0 +1,9 @@
+target/
+*.iml
+.idea/
+.vscode/
+.zcode/
+mods/**/build/
+mods/**/run/
+mods/.gradle/
+.gradle/

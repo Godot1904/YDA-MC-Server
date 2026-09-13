@@ -1,0 +1,46 @@
+# YuDream Admin base URL. Do not include a trailing slash.
+base-url: "http://127.0.0.1:8080"
+
+# Server id created in YuDream Admin minecraft-server plugin.
+server-id: ""
+
+# API key with plugin:minecraft-server:report permission.
+# The status command also needs plugin:minecraft-server:manage.
+api-key: ""
+
+enabled: true
+
+http:
+  connect-timeout-ms: 5000
+  read-timeout-ms: 8000
+  retry-attempts: 3
+  retry-delay-ms: 1500
+  queue-capacity: 1000
+  # Logs every event accepted into the async report queue.
+  log-queued: false
+  # Logs every HTTP attempt, including retries.
+  log-attempts: false
+  # Logs successful reports.
+  log-success: true
+  # Logs final failures after all retry attempts.
+  log-failures: true
+  # Include playerId and eventAt in report logs. API key is never logged.
+  log-payload: false
+
+afk:
+  enabled: true
+  timeout-seconds: 300
+  check-interval-seconds: 30
+  reset-on-move: true
+  reset-on-chat: true
+  reset-on-command: true
+  reset-on-interact: true
+
+startup:
+  # Useful after /reload: players already online are reported again.
+  sync-online-on-enable: true
+
+shutdown:
+  # Keep false for plugin reloads. Enable only if you need forced quit reports on disable.
+  report-quit-on-disable: false
+  flush-timeout-ms: 5000

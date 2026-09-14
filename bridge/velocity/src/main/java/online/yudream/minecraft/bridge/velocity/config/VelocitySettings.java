@@ -23,6 +23,9 @@ public final class VelocitySettings {
     private final long sensorTimeoutSeconds;
     private final int snapshotIntervalSeconds;
     private final int probeIntervalSeconds;
+    private final boolean topologyEnabled;
+    private final int topologyIntervalSeconds;
+    private final List<String> topologyAddresses;
     private final double moveActivityMinBlocks;
     private final List<String> admins;
     private final String commandPermission;
@@ -35,6 +38,9 @@ public final class VelocitySettings {
         this.sensorTimeoutSeconds = Math.max(builder.sensorTimeoutSeconds, 5L);
         this.snapshotIntervalSeconds = (int) Math.max(builder.snapshotIntervalSeconds, 5L);
         this.probeIntervalSeconds = (int) Math.max(builder.probeIntervalSeconds, 5L);
+        this.topologyEnabled = builder.topologyEnabled;
+        this.topologyIntervalSeconds = (int) Math.max(builder.topologyIntervalSeconds, 10L);
+        this.topologyAddresses = Collections.unmodifiableList(new ArrayList<String>(builder.topologyAddresses));
         this.moveActivityMinBlocks = builder.moveActivityMinBlocks <= 0 ? 1.0D : builder.moveActivityMinBlocks;
         this.admins = Collections.unmodifiableList(new ArrayList<String>(builder.admins));
         this.commandPermission = builder.commandPermission == null || builder.commandPermission.trim().isEmpty()
@@ -61,6 +67,9 @@ public final class VelocitySettings {
                 .sensorTimeoutSeconds(config.getLong("target.sensor-timeout-seconds", fallback.sensorTimeoutSeconds))
                 .snapshotIntervalSeconds(config.getInt("snapshot.interval-seconds", fallback.snapshotIntervalSeconds))
                 .probeIntervalSeconds(config.getInt("target.probe-interval-seconds", fallback.probeIntervalSeconds))
+                .topologyEnabled(config.getBoolean("topology.enabled", fallback.topologyEnabled))
+                .topologyIntervalSeconds(config.getInt("topology.interval-seconds", fallback.topologyIntervalSeconds))
+                .topologyAddresses(config.getList("topology.addresses"))
                 .moveActivityMinBlocks(rawMoveBlocks.isEmpty()
                         ? fallback.moveActivityMinBlocks
                         : parseDouble(rawMoveBlocks, fallback.moveActivityMinBlocks))
@@ -79,6 +88,9 @@ public final class VelocitySettings {
         config.setIfAbsent("target.probe-interval-seconds", settings.probeIntervalSeconds);
         config.setIfAbsent("target.move-activity-min-blocks", settings.moveActivityMinBlocks);
         config.setIfAbsent("snapshot.interval-seconds", settings.snapshotIntervalSeconds);
+        config.setIfAbsent("topology.enabled", settings.topologyEnabled);
+        config.setIfAbsent("topology.interval-seconds", settings.topologyIntervalSeconds);
+        config.setIfAbsent("topology.addresses", String.join(",", settings.topologyAddresses));
         config.setIfAbsent("command.permission", settings.commandPermission);
         config.setIfAbsent("command.admins", String.join(",", settings.admins));
         config.setIfAbsent("login.blocked-names", String.join(",", settings.blockedLoginNames));
@@ -122,6 +134,31 @@ public final class VelocitySettings {
         return probeIntervalSeconds;
     }
 
+    /**
+     * Whether this proxy periodically reports its downstream-server list to YuDream Admin.
+     *
+     * <p>On by default: a proxy's Server List Ping does not expose its backends, so the bridge is the
+     * only component that can tell Admin what a group server contains.
+     */
+    public boolean topologyEnabled() {
+        return topologyEnabled;
+    }
+
+    public int topologyIntervalSeconds() {
+        return topologyIntervalSeconds;
+    }
+
+    /**
+     * The proxy's own public addresses, used to match this report to an Admin server entry.
+     *
+     * <p>Velocity only exposes its bind address, which is usually {@code 0.0.0.0} and therefore
+     * useless for matching. Leaving this empty falls back to the bind address; set it to the
+     * hostname players actually connect to when that differs, which is the normal case behind NAT.
+     */
+    public List<String> topologyAddresses() {
+        return topologyAddresses;
+    }
+
     public double moveActivityMinBlocks() {
         return moveActivityMinBlocks;
     }
@@ -155,6 +192,9 @@ public final class VelocitySettings {
                 .sensorTimeoutSeconds(sensorTimeoutSeconds)
                 .snapshotIntervalSeconds(snapshotIntervalSeconds)
                 .probeIntervalSeconds(probeIntervalSeconds)
+                .topologyEnabled(topologyEnabled)
+                .topologyIntervalSeconds(topologyIntervalSeconds)
+                .topologyAddresses(topologyAddresses)
                 .moveActivityMinBlocks(moveActivityMinBlocks)
                 .admins(admins)
                 .commandPermission(commandPermission)
@@ -171,6 +211,9 @@ public final class VelocitySettings {
         private long sensorTimeoutSeconds = 90L;
         private int snapshotIntervalSeconds = 60;
         private int probeIntervalSeconds = 30;
+        private boolean topologyEnabled = true;
+        private int topologyIntervalSeconds = 60;
+        private List<String> topologyAddresses = new ArrayList<String>();
         private double moveActivityMinBlocks = 1.0D;
         private List<String> admins = new ArrayList<String>();
         private String commandPermission = "yudreammc.admin";
@@ -203,6 +246,21 @@ public final class VelocitySettings {
 
         public Builder probeIntervalSeconds(int value) {
             this.probeIntervalSeconds = value;
+            return this;
+        }
+
+        public Builder topologyEnabled(boolean value) {
+            this.topologyEnabled = value;
+            return this;
+        }
+
+        public Builder topologyIntervalSeconds(int value) {
+            this.topologyIntervalSeconds = value;
+            return this;
+        }
+
+        public Builder topologyAddresses(List<String> value) {
+            this.topologyAddresses = value == null ? new ArrayList<String>() : new ArrayList<String>(value);
             return this;
         }
 

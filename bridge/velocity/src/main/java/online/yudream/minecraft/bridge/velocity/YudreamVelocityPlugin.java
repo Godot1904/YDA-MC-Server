@@ -26,6 +26,7 @@ import online.yudream.minecraft.bridge.common.log.LogSink;
 import online.yudream.minecraft.bridge.common.model.PlayerEventPayload;
 import online.yudream.minecraft.bridge.common.model.PlayerEventType;
 import online.yudream.minecraft.bridge.common.model.PlayerIdentity;
+import online.yudream.minecraft.bridge.common.model.SubServerInfo;
 import online.yudream.minecraft.bridge.common.protocol.BridgeMessage;
 import online.yudream.minecraft.bridge.common.protocol.BridgeProtocol;
 import online.yudream.minecraft.bridge.common.protocol.ProtocolException;
@@ -44,8 +45,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -108,6 +111,7 @@ public final class YudreamVelocityPlugin {
     private ScheduledTask snapshotTask;
     private ScheduledTask afkTask;
     private ScheduledTask probeTask;
+    private ScheduledTask topologyTask;
     private boolean warnedAboutTarget;
     private boolean warnedAboutSensor;
 
@@ -506,10 +510,17 @@ public final class YudreamVelocityPlugin {
         probeTask = server.getScheduler().buildTask(this, this::probeTarget)
                 .repeat(Duration.ofSeconds(settings.probeIntervalSeconds()))
                 .schedule();
+        if (settings.topologyEnabled()) {
+            // Report once shortly after start, then on the configured cadence.
+            topologyTask = server.getScheduler().buildTask(this, this::reportTopology)
+                    .delay(Duration.ofSeconds(5))
+                    .repeat(Duration.ofSeconds(settings.topologyIntervalSeconds()))
+                    .schedule();
+        }
     }
 
     private void cancelTasks() {
-        for (ScheduledTask task : new ScheduledTask[]{snapshotTask, afkTask, probeTask}) {
+        for (ScheduledTask task : new ScheduledTask[]{snapshotTask, afkTask, probeTask, topologyTask}) {
             if (task != null) {
                 task.cancel();
             }
@@ -517,6 +528,7 @@ public final class YudreamVelocityPlugin {
         snapshotTask = null;
         afkTask = null;
         probeTask = null;
+        topologyTask = null;
     }
 
     /**
@@ -623,6 +635,93 @@ public final class YudreamVelocityPlugin {
         }
         lines.sort(String::compareTo);
         return lines;
+    }
+
+    /** Every downstream server Velocity knows about, as the topology report describes them. */
+    public List<SubServerInfo> subServers() {
+        List<String> tryOrder = new ArrayList<String>();
+        try {
+            List<String> configured = server.getConfiguration().getAttemptConnectionOrder();
+            if (configured != null) {
+                tryOrder.addAll(configured);
+            }
+        } catch (RuntimeException ignored) {
+            // Older Velocity builds may not expose the try list; the default flag is only a label.
+        }
+        List<SubServerInfo> items = new ArrayList<SubServerInfo>();
+        for (com.velocitypowered.api.proxy.server.RegisteredServer registered : server.getAllServers()) {
+            com.velocitypowered.api.proxy.server.ServerInfo info = registered.getServerInfo();
+            String name = info.getName();
+            items.add(new SubServerInfo(
+                    name,
+                    String.valueOf(info.getAddress()),
+                    registered.getPlayersConnected().size(),
+                    sensors.isConfirmed(name),
+                    !tryOrder.isEmpty() && tryOrder.get(0).equals(name)));
+        }
+        items.sort(Comparator.comparing(SubServerInfo::name));
+        return items;
+    }
+
+    /**
+     * The addresses this report advertises, used by Admin to find the matching server entry.
+     *
+     * <p>Falls back to Velocity's bind address, which is normally {@code 0.0.0.0} and therefore
+     * unmatched — hence {@code topology.addresses}.
+     */
+    public List<String> advertisedAddresses() {
+        if (!settings.topologyAddresses().isEmpty()) {
+            return settings.topologyAddresses();
+        }
+        List<String> fallback = new ArrayList<String>();
+        try {
+            InetSocketAddress bound = server.getBoundAddress();
+            if (bound != null && bound.getHostString() != null && !bound.getHostString().isEmpty()) {
+                fallback.add(bound.getHostString() + ":" + bound.getPort());
+            }
+        } catch (RuntimeException ignored) {
+        }
+        return fallback;
+    }
+
+    /**
+     * Reports this proxy's downstream-server list to YuDream Admin.
+     *
+     * <p>A proxy's Server List Ping describes the proxy and never its backends, so this is the only
+     * way Admin can learn what a group server contains. When no server id is configured the report is
+     * matched by address instead, which is what lets an operator resolve a group server by installing
+     * the bridge and nothing else.
+     */
+    public void reportTopology() {
+        if (!settings.topologyEnabled() || !settings.bridge().hasCredentials()) {
+            return;
+        }
+        final YudreamApiClient client = apiClient;
+        if (client == null) {
+            return;
+        }
+        final List<SubServerInfo> servers = subServers();
+        final boolean bound = !settings.bridge().getServerId().isEmpty();
+        final String body = client.topologyBody("velocity", server.getVersion().getVersion(),
+                advertisedAddresses(), servers, System.currentTimeMillis());
+        server.getScheduler().buildTask(this, () -> {
+            try {
+                HttpResult result = bound ? client.reportTopology(body) : client.reportTopologyByAddress(body);
+                if (result.isSuccess()) {
+                    log.info("Reported " + servers.size() + " downstream server(s) to YuDream Admin (http="
+                            + result.statusCode() + ").");
+                } else if (result.statusCode() == 404 || result.statusCode() == 400) {
+                    log.warn("YuDream Admin could not match the proxy topology (HTTP " + result.statusCode()
+                            + " " + result.trimmedBody() + "). Set topology.addresses to the address players"
+                            + " connect to, or set api.server-id to bind this report to one Admin server entry.");
+                } else {
+                    log.warn("Could not report the proxy topology: HTTP " + result.statusCode()
+                            + " " + result.trimmedBody() + ".");
+                }
+            } catch (Exception e) {
+                log.warn("Could not report the proxy topology: " + e.getMessage(), e);
+            }
+        }).schedule();
     }
 
     /** Queries YuDream Admin asynchronously and hands the result to the callback. */

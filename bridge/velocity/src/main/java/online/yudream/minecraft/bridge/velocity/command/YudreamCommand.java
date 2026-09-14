@@ -21,7 +21,7 @@ import java.util.List;
  */
 public final class YudreamCommand implements SimpleCommand {
 
-    private static final List<String> SUBCOMMANDS = List.of("help", "reload", "status", "sync", "queue", "target");
+    private static final List<String> SUBCOMMANDS = List.of("help", "reload", "status", "sync", "queue", "target", "topology");
 
     private final YudreamVelocityPlugin plugin;
 
@@ -77,6 +77,9 @@ public final class YudreamCommand implements SimpleCommand {
                 return;
             case "target":
                 target(source, args);
+                return;
+            case "topology":
+                topology(source);
                 return;
             default:
                 help(source, invocation.alias());
@@ -188,9 +191,49 @@ public final class YudreamCommand implements SimpleCommand {
                 + "yudream_minecraft_server-fabric on that backend, or set target.require-sensor=false.";
     }
 
+    /**
+     * Shows the downstream-server list Admin will receive and pushes it right away.
+     *
+     * <p>The output is also the answer to "why does Admin show no sub-servers": it prints the
+     * addresses the report advertises, which are what Admin matches against.
+     */
+    private void topology(CommandSource source) {
+        VelocitySettings settings = plugin.settings();
+        List<String> addresses = plugin.advertisedAddresses();
+        if (settings.bridge().isConfigured()) {
+            source.sendMessage(line("Binding", "api.server-id=" + settings.bridge().getServerId()));
+        } else if (settings.bridge().hasCredentials()) {
+            source.sendMessage(line("Binding", "by address (no api.server-id set)"));
+        } else {
+            source.sendMessage(prefix().append(Component.text(
+                    "YuDream Admin is not configured (api.base-url / api.api-key).", NamedTextColor.RED)));
+            return;
+        }
+        source.sendMessage(line("Advertised addresses", addresses.isEmpty() ? "<none>" : String.join(", ", addresses)));
+        source.sendMessage(line("Reporting", settings.topologyEnabled()
+                ? "every " + settings.topologyIntervalSeconds() + "s"
+                : "disabled (topology.enabled=false)"));
+        List<String> lines = plugin.describeServers();
+        if (lines.isEmpty()) {
+            source.sendMessage(prefix().append(Component.text("Velocity knows no downstream servers.", NamedTextColor.RED)));
+            return;
+        }
+        for (String description : lines) {
+            source.sendMessage(prefix().append(Component.text("  " + description, NamedTextColor.GRAY)));
+        }
+        if (addresses.isEmpty()) {
+            source.sendMessage(prefix().append(Component.text(
+                    "No address to match on. Set topology.addresses to the address players connect to.",
+                    NamedTextColor.YELLOW)));
+        }
+        plugin.reportTopology();
+        source.sendMessage(prefix().append(Component.text("Topology report queued.", NamedTextColor.GREEN)));
+    }
+
     private void help(CommandSource source, String alias) {
         source.sendMessage(prefix().append(Component.text("/" + alias + " target [server|list]", NamedTextColor.GRAY)));
         source.sendMessage(prefix().append(Component.text("/" + alias + " status", NamedTextColor.GRAY)));
+        source.sendMessage(prefix().append(Component.text("/" + alias + " topology", NamedTextColor.GRAY)));
         source.sendMessage(prefix().append(Component.text("/" + alias + " reload", NamedTextColor.GRAY)));
         source.sendMessage(prefix().append(Component.text("/" + alias + " sync", NamedTextColor.GRAY)));
         source.sendMessage(prefix().append(Component.text("/" + alias + " queue", NamedTextColor.GRAY)));

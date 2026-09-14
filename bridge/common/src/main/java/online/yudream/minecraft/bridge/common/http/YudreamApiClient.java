@@ -4,6 +4,7 @@ import online.yudream.minecraft.bridge.common.config.BridgeSettings;
 import online.yudream.minecraft.bridge.common.json.JsonValue;
 import online.yudream.minecraft.bridge.common.model.PlayerEventPayload;
 import online.yudream.minecraft.bridge.common.model.PlayerEventType;
+import online.yudream.minecraft.bridge.common.model.SubServerInfo;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -34,7 +35,10 @@ import java.util.Collection;
  */
 public final class YudreamApiClient {
 
-    private static final String PLUGIN_PATH = "/api/plugins/minecraft-server/servers/";
+    static final String PLUGIN_BASE = "/api/plugins/minecraft-server";
+    static final String PLUGIN_PATH = PLUGIN_BASE + "/servers/";
+    /** Address-matched topology route: no server id in the path. */
+    static final String REPORT_TOPOLOGY_PATH = PLUGIN_BASE + "/report/topology";
 
     private final BridgeSettings settings;
     private final String userAgent;
@@ -55,6 +59,63 @@ public final class YudreamApiClient {
     public HttpResult players(int page, int size) throws IOException {
         String path = "/players?page=" + Math.max(page, 1) + "&size=" + Math.max(Math.min(size, 100), 1);
         return request("GET", serverUrl(path), null);
+    }
+
+    /**
+     * Reports this proxy's downstream-server list bound to the configured Admin server id.
+     *
+     * <p>Used when {@code api.server-id} is set. An Admin deployment that exposes only the
+     * address-matched route answers 404 here, which is why {@link #reportTopologyByAddress} exists.
+     */
+    public HttpResult reportTopology(String body) throws IOException {
+        return request("POST", serverUrl("/topology"), body);
+    }
+
+    /**
+     * Reports this proxy's downstream-server list without naming a server id, letting Admin match it
+     * by the proxy's own addresses.
+     *
+     * <p>This is the route that makes "resolve the group server" a one-step install: the operator
+     * configures Admin's base URL and API key and nothing else, instead of copying a server id out of
+     * Admin into this file.
+     */
+    public HttpResult reportTopologyByAddress(String body) throws IOException {
+        return request("POST", settings.getBaseUrl() + REPORT_TOPOLOGY_PATH, body);
+    }
+
+    /**
+     * Serialises a topology report.
+     *
+     * @param addresses this proxy's own public addresses, used by the address-matched route
+     */
+    public String topologyBody(String proxy, String proxyVersion, Collection<String> addresses,
+                               Collection<SubServerInfo> servers, long reportedAt) {
+        JsonValue body = JsonValue.object();
+        body.put("proxy", proxy == null ? "" : proxy);
+        body.put("proxyVersion", proxyVersion == null ? "" : proxyVersion);
+        body.put("reportedAt", reportedAt);
+        JsonValue addressList = JsonValue.array();
+        if (addresses != null) {
+            for (String address : addresses) {
+                if (address != null && !address.isEmpty()) {
+                    addressList.add(JsonValue.of(address));
+                }
+            }
+        }
+        body.put("addresses", addressList);
+        JsonValue serverList = JsonValue.array();
+        if (servers != null) {
+            for (SubServerInfo server : servers) {
+                serverList.add(JsonValue.object()
+                        .put("name", server.name())
+                        .put("address", server.address() == null ? "" : server.address())
+                        .put("online", server.online())
+                        .put("sensor", server.sensor())
+                        .put("defaultServer", server.defaultServer()));
+            }
+        }
+        body.put("servers", serverList);
+        return body.toString();
     }
 
     public String serverUrl(String serverRelativePath) {

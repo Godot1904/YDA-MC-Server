@@ -137,9 +137,9 @@ On Paper 1.19/1.20+, the plugin also registers Paper's modern `AsyncChatEvent` w
 mvn clean package
 ```
 
-Put `target/yudream-minecraft-server-bukkit-1.0.0.jar` into the server `plugins` folder, start the server once, then edit:
+Put `target/yudream-minecraft-server-bukkit-1.1.0.jar` into the server `plugins` folder, start the server once, then edit:
 
-将 `target/yudream-minecraft-server-bukkit-1.0.0.jar` 放到服务端 `plugins` 目录，启动一次后再编辑：
+将 `target/yudream-minecraft-server-bukkit-1.1.0.jar` 放到服务端 `plugins` 目录，启动一次后再编辑：
 
 ```yaml
 base-url: "http://your-admin-host:8080"
@@ -178,8 +178,8 @@ Outputs:
 
 产物：
 
-- `mods/forge-1.20.1/build/libs/yudream_minecraft_server-forge-1.20.1-1.0.0.jar`
-- `mods/neoforge-1.21.1/build/libs/yudream_minecraft_server-neoforge-1.21.1-1.0.0.jar`
+- `mods/forge-1.20.1/build/libs/yudream_minecraft_server-forge-1.20.1-1.1.0.jar`
+- `mods/neoforge-1.21.1/build/libs/yudream_minecraft_server-neoforge-1.21.1-1.1.0.jar`
 
 ## Commands / 命令
 

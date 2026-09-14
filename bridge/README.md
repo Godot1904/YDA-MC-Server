@@ -7,8 +7,8 @@ plus a Fabric mod that reports on its own when there is no proxy.
 
 | Artifact / 产物 | Platform / 平台 | Target / 目标 |
 |---|---|---|
-| `yudream-velocity-1.0.0.jar` | Velocity proxy plugin | Velocity 3.5.x, Java 21 |
-| `yudream_minecraft_server-fabric-26.2-1.0.0.jar` | Fabric dedicated-server mod | Minecraft 26.2, Java 25. Two modes: `downstream` or `standalone` |
+| `yudream-velocity-1.1.0.jar` | Velocity proxy plugin | Velocity 3.5.x, Java 21 |
+| `yudream_minecraft_server-fabric-26.2-1.1.0.jar` | Fabric dedicated-server mod | Minecraft 26.2, Java 25. Two modes: `downstream` or `standalone` |
 
 In the default `downstream` mode the proxy plugin is the only component that talks to YuDream Admin: a
 backend observes the server it is installed on and forwards events to the proxy over a plugin message
@@ -106,8 +106,8 @@ cd bridge
 
 Outputs / 产物：
 
-- `bridge/velocity/build/libs/yudream-velocity-1.0.0.jar`
-- `bridge/fabric-26.2/build/libs/yudream_minecraft_server-fabric-26.2-1.0.0.jar`
+- `bridge/velocity/build/libs/yudream-velocity-1.1.0.jar`
+- `bridge/fabric-26.2/build/libs/yudream_minecraft_server-fabric-26.2-1.1.0.jar`
 
 Repository mirrors can be overridden without editing the build files, matching `mods/settings.gradle`:
 
@@ -132,14 +132,14 @@ queue, the AFK state machine and the bridge protocol. It is compiled into both a
 
 Proxy / 代理：
 
-1. Put `yudream-velocity-1.0.0.jar` in `plugins/` on the Velocity proxy.
+1. Put `yudream-velocity-1.1.0.jar` in `plugins/` on the Velocity proxy.
 2. Start once; `plugins/yudream-velocity/config.properties` is created.
 3. Fill in `api.base-url`, `api.server-id` and `api.api-key`; set `target.server` to the backend new
    players land on. That marker is optional — every backend is reported either way.
 
 Backend / 后端（每台需要子服明细的后端都装，不只是 `target.server` 指向的那台）：
 
-1. Put `yudream_minecraft_server-fabric-26.2-1.0.0.jar` in `mods/` and install Fabric API.
+1. Put `yudream_minecraft_server-fabric-26.2-1.1.0.jar` in `mods/` and install Fabric API.
 2. Start once; `config/yudream-bridge.properties` is created. Leave `mode=downstream`; nothing else is
    required, because the proxy owns the credentials.
 

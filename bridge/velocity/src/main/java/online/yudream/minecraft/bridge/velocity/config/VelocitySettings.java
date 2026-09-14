@@ -11,9 +11,10 @@ import java.util.List;
  * The proxy-side configuration: everything in {@link BridgeSettings} plus the pieces that only make
  * sense on a Velocity proxy.
  *
- * <p>The headline setting is {@code target.server}: which downstream server's player list gets
- * reported to YuDream Admin. The proxy sees every backend, so without this the bridge would have to
- * guess which one the Admin entry describes.
+ * <p>Every downstream server is reported, each as its own sub-server, so {@code target.server} is
+ * <b>not</b> a reporting switch any more: it only marks the default / login-entry backend that
+ * {@code /yudreammc target} edits and that a login hint reads. {@code target.require-sensor} is
+ * applied per sub-server instead of once for the whole proxy.
  */
 public final class VelocitySettings {
 
@@ -108,7 +109,11 @@ public final class VelocitySettings {
         return bridge;
     }
 
-    /** The reported downstream server name, or an empty string when nothing is selected yet. */
+    /**
+     * The default / login-entry downstream server name, or an empty string when none is marked.
+     *
+     * <p>Reporting does not depend on it: all downstream servers are always reported.
+     */
     public String targetServer() {
         return targetServer;
     }
@@ -117,7 +122,12 @@ public final class VelocitySettings {
         return !targetServer.isEmpty();
     }
 
-    /** When true, the bridge refuses to report anything until the target backend has said hello. */
+    /**
+     * When true, a sub-server is not reported until <em>its own</em> Fabric sensor has said hello.
+     *
+     * <p>Applied per sub-server, never once for the whole proxy: a backend that lost the mod stops
+     * reporting while every instrumented backend keeps reporting normally.
+     */
     public boolean requireSensor() {
         return requireSensor;
     }

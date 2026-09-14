@@ -16,8 +16,10 @@ import java.util.List;
 /**
  * {@code /yudreammc} on the proxy.
  *
- * <p>{@code target} is the operation that matters most here: it selects which downstream server's
- * player list is uploaded, and writes the choice back into the config file so it survives a restart.
+ * <p>Every downstream server is reported as its own sub-server, so {@code target} is no longer a
+ * reporting switch: it records which backend is the <b>default / login entry</b>. {@code status}
+ * prints the per-sub-server reporting picture, which is where "why is this backend not showing up"
+ * is answered.
  */
 public final class YudreamCommand implements SimpleCommand {
 
@@ -66,7 +68,7 @@ public final class YudreamCommand implements SimpleCommand {
                 return;
             case "sync":
                 plugin.syncOnlinePlayers();
-                source.sendMessage(prefix().append(Component.text("Queued join reports for the target downstream server.", NamedTextColor.GREEN)));
+                source.sendMessage(prefix().append(Component.text("Queued join reports and a per-sub-server snapshot for every reportable sub-server.", NamedTextColor.GREEN)));
                 return;
             case "queue":
                 source.sendMessage(prefix().append(Component.text(
@@ -116,7 +118,10 @@ public final class YudreamCommand implements SimpleCommand {
         if (args.length < 2) {
             String current = plugin.settings().targetServer();
             source.sendMessage(prefix().append(Component.text(
-                    "Reported downstream server: " + (current.isEmpty() ? "<unset>" : current), NamedTextColor.GRAY)));
+                    "Default (login-entry) downstream server: " + (current.isEmpty() ? "<unset>" : current), NamedTextColor.GRAY)));
+            source.sendMessage(prefix().append(Component.text(
+                    "This is a marker only. Every downstream server is reported, each as its own sub-server.",
+                    NamedTextColor.DARK_GRAY)));
             source.sendMessage(prefix().append(Component.text(
                     "Use /yudreammc target <server> to change it, or /yudreammc target list to see the options.", NamedTextColor.DARK_GRAY)));
             return;
@@ -141,25 +146,37 @@ public final class YudreamCommand implements SimpleCommand {
         String previous = plugin.setTarget(requested);
         String change = previous.isEmpty() ? "" : " (was '" + previous + "')";
         source.sendMessage(prefix().append(Component.text(
-                "Now reporting downstream server '" + requested + "'" + change + ". Saved to config.",
+                "Default (login-entry) downstream server is now '" + requested + "'" + change + ". Saved to config.",
                 NamedTextColor.GREEN)));
-        if (!plugin.canReport()) {
-            source.sendMessage(prefix().append(Component.text(sensorHint(), NamedTextColor.YELLOW)));
-        }
+        source.sendMessage(prefix().append(Component.text(
+                "Reporting is unchanged: every downstream server keeps being reported separately.",
+                NamedTextColor.DARK_GRAY)));
     }
 
     private void status(CommandSource source) {
         VelocitySettings settings = plugin.settings();
         String target = settings.targetServer();
         source.sendMessage(prefix().append(Component.text("Velocity bridge " + YudreamVelocityPlugin.VERSION, NamedTextColor.AQUA)));
-        source.sendMessage(line("Target downstream", target.isEmpty() ? "<unset>" : target));
+        source.sendMessage(line("Default downstream", target.isEmpty() ? "<unset> (marker only)" : target + " (marker only)"));
         source.sendMessage(line("Reporting", plugin.canReport() ? "active" : "blocked - " + blockedReason()));
+        source.sendMessage(line("Reported players", Integer.toString(plugin.reportedPlayerCount())));
         source.sendMessage(line("Endpoint", settings.bridge().isConfigured()
                 ? settings.bridge().getBaseUrl() + " / server-id=" + settings.bridge().getServerId()
                 : "<not configured>"));
-        source.sendMessage(line("Players on target", Integer.toString(plugin.presence().countOn(target))));
         source.sendMessage(line("Queue", plugin.queueSize() + " pending, " + plugin.outstandingReports() + " journaled"));
-        source.sendMessage(line("Snapshots", "every " + settings.snapshotIntervalSeconds() + "s"));
+        source.sendMessage(line("Snapshots", "every " + settings.snapshotIntervalSeconds() + "s, one roster per sub-server"));
+        source.sendMessage(line("Sensor gate", settings.requireSensor()
+                ? "per sub-server (target.require-sensor=true)"
+                : "off (target.require-sensor=false)"));
+        List<String> servers = plugin.describeServers();
+        if (servers.isEmpty()) {
+            source.sendMessage(line("Sub-servers", "Velocity knows no downstream servers"));
+        } else {
+            source.sendMessage(prefix().append(Component.text("Sub-servers:", NamedTextColor.DARK_GRAY)));
+            for (String description : servers) {
+                source.sendMessage(prefix().append(Component.text("  " + description, NamedTextColor.GRAY)));
+            }
+        }
         source.sendMessage(line("Sensors", plugin.sensors().describe().isEmpty()
                 ? "none have said hello yet"
                 : String.join("; ", plugin.sensors().describe())));
@@ -176,19 +193,15 @@ public final class YudreamCommand implements SimpleCommand {
         if (!settings.bridge().isConfigured()) {
             return "api.base-url / api.server-id / api.api-key are incomplete";
         }
-        if (!settings.hasTarget()) {
-            return "no target downstream server selected";
-        }
-        if (settings.requireSensor() && !plugin.sensors().isConfirmed(settings.targetServer())) {
+        if (settings.requireSensor()) {
             return sensorHint();
         }
         return "unknown";
     }
 
     private String sensorHint() {
-        return "the Fabric sensor on '" + plugin.settings().targetServer()
-                + "' has not said hello yet. Install "
-                + "yudream_minecraft_server-fabric on that backend, or set target.require-sensor=false.";
+        return "no downstream sensor has said hello yet, and target.require-sensor=true."
+                + " Install yudream_minecraft_server-fabric on the backends, or set target.require-sensor=false.";
     }
 
     /**

@@ -5,6 +5,7 @@ import online.yudream.minecraft.bridge.common.json.JsonValue;
 import online.yudream.minecraft.bridge.common.model.PlayerEventPayload;
 import online.yudream.minecraft.bridge.common.model.PlayerEventType;
 import online.yudream.minecraft.bridge.common.model.SubServerInfo;
+import online.yudream.minecraft.bridge.common.model.SubServerRoster;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -20,18 +21,25 @@ import java.util.Collection;
 /**
  * Talks to the YuDream Admin {@code minecraft-server} plugin.
  *
- * <p>The wire format is intentionally byte-identical to the one the Bukkit plugin and the
- * Forge/NeoForge mods already send:
+ * <p>The wire format is deliberately additive: every shape the Bukkit plugin and the older bridge
+ * releases already send still goes out unchanged, and the newer fields are optional on the Admin
+ * side. An Admin deployment that predates the sub-server dimension keeps working with a client that
+ * does not send them.
  *
  * <pre>
- * POST .../players/{join|quit|afk/start|afk/end}   {"playerId":"..","playerName":"..","eventAt":123}
+ * POST .../players/{join|quit|afk/start|afk/end}   {"playerId":"..","playerName":"..","eventAt":123,"server":"fabric"}
  * POST .../players/snapshot                       {"observedAt":123,"players":[{"playerId":"..","playerName":".."}]}
+ * POST .../players/snapshot                       {"observedAt":123,"servers":[{"name":"fabric","players":[]}]}
  * GET  .../players?page=1&amp;size=100
  * </pre>
  *
- * <p>{@code serverName} is local metadata and is only added to the snapshot body when
+ * <p>{@code server} is the sub-server name the player was on (a Velocity backend name). It is
+ * omitted when blank, which is exactly the legacy body: no sub-server dimension, so Admin files the
+ * event under its {@code default} bucket.
+ *
+ * <p>{@code serverName} in the flat snapshot body is local metadata and is only added when
  * {@code api.include-server-name-in-snapshot} is switched on, because a strictly validating backend
- * would reject the extra field.
+ * would reject the extra field. The grouped form has its own {@code servers} array and never uses it.
  */
 public final class YudreamApiClient {
 
@@ -54,6 +62,17 @@ public final class YudreamApiClient {
 
     public HttpResult snapshot(Collection<PlayerEventPayload> players, long observedAt, String serverName) throws IOException {
         return request("POST", serverUrl("/players/snapshot"), snapshotBody(players, observedAt, serverName));
+    }
+
+    /**
+     * Reports every sub-server's roster in one snapshot.
+     *
+     * <p>This is the shape a proxy uses: each listed sub-server is reconciled on its own, so a
+     * snapshot that only covers {@code paper} cannot close anyone on {@code fabric}. A listed
+     * sub-server with an empty roster is meaningful and must be kept.
+     */
+    public HttpResult groupedSnapshot(Collection<SubServerRoster> servers, long observedAt) throws IOException {
+        return request("POST", serverUrl("/players/snapshot"), groupedSnapshotBody(servers, observedAt));
     }
 
     public HttpResult players(int page, int size) throws IOException {
@@ -126,11 +145,15 @@ public final class YudreamApiClient {
     }
 
     public String eventBody(PlayerEventPayload payload) {
-        return JsonValue.object()
+        JsonValue body = JsonValue.object()
                 .put("playerId", payload.playerId())
                 .put("playerName", payload.playerName())
-                .put("eventAt", payload.eventAt())
-                .toString();
+                .put("eventAt", payload.eventAt());
+        // 空白即“没有子服维度”，此时整条报文与旧版一字不差。
+        if (payload.serverName() != null && !payload.serverName().isEmpty()) {
+            body.put("server", payload.serverName());
+        }
+        return body.toString();
     }
 
     public String snapshotBody(Collection<PlayerEventPayload> players, long observedAt, String serverName) {
@@ -139,14 +162,44 @@ public final class YudreamApiClient {
         if (settings.isIncludeServerNameInSnapshot() && serverName != null && !serverName.isEmpty()) {
             body.put("serverName", serverName);
         }
+        body.put("players", playerArray(players));
+        return body.toString();
+    }
+
+    /**
+     * Serialises the grouped snapshot body:
+     * {@code {"observedAt":123,"servers":[{"name":"fabric","players":[...]}]}}.
+     *
+     * <p>A sub-server with an empty roster is still emitted: that is how Admin learns nobody is left
+     * there. When there is no sub-server at all the name is written as an empty string, which Admin
+     * normalises into its {@code default} bucket.
+     */
+    public String groupedSnapshotBody(Collection<SubServerRoster> servers, long observedAt) {
+        JsonValue body = JsonValue.object();
+        body.put("observedAt", observedAt);
         JsonValue list = JsonValue.array();
+        if (servers != null) {
+            for (SubServerRoster roster : servers) {
+                list.add(JsonValue.object()
+                        .put("name", roster.name() == null ? "" : roster.name())
+                        .put("players", playerArray(roster.players())));
+            }
+        }
+        body.put("servers", list);
+        return body.toString();
+    }
+
+    private static JsonValue playerArray(Collection<PlayerEventPayload> players) {
+        JsonValue list = JsonValue.array();
+        if (players == null) {
+            return list;
+        }
         for (PlayerEventPayload player : players) {
             list.add(JsonValue.object()
                     .put("playerId", player.playerId())
                     .put("playerName", player.playerName()));
         }
-        body.put("players", list);
-        return body.toString();
+        return list;
     }
 
     private HttpResult request(String method, String url, String body) throws IOException {
